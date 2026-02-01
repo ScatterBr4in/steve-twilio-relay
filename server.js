@@ -86,12 +86,15 @@ wss.on('connection', (ws) => {
     const { event } = data;
 
     if (event === 'start') {
+      console.log('[start] stream opened');
       // Send greeting TTS
       const greeting = "Hey, this is Steve.";
       const stamp = Date.now();
       const mp3Path = `/tmp/greet_${stamp}.mp3`;
       const mulawPath = `/tmp/greet_${stamp}.mulaw`;
       try {
+        // Small delay so Twilio stream is ready
+        await new Promise(r => setTimeout(r, 400));
         await elevenTTS(greeting, mp3Path);
         execSync(`ffmpeg -i ${mp3Path} -ar 8000 -ac 1 -f mulaw ${mulawPath}`);
         const mulawAudio = fs.readFileSync(mulawPath).toString('base64');
@@ -99,8 +102,9 @@ wss.on('connection', (ws) => {
           event: 'media',
           media: { payload: mulawAudio }
         }));
+        console.log('[greeting] sent');
       } catch (err) {
-        console.error('Greeting TTS failed (ElevenLabs). Sending fallback tone.');
+        console.error('[greeting] TTS failed (ElevenLabs). Sending fallback tone.', err);
         try {
           const toneWav = `/tmp/fallback_${stamp}.wav`;
           const toneMulaw = `/tmp/fallback_${stamp}.mulaw`;
@@ -111,8 +115,11 @@ wss.on('connection', (ws) => {
             event: 'media',
             media: { payload: toneAudio }
           }));
+          console.log('[greeting] fallback tone sent');
           [toneWav, toneMulaw].forEach(p => { try { fs.unlinkSync(p); } catch {} });
-        } catch {}
+        } catch (e) {
+          console.error('[greeting] fallback failed', e);
+        }
       } finally {
         // Cleanup
         [mp3Path, mulawPath].forEach(p => { try { fs.unlinkSync(p); } catch {} });
