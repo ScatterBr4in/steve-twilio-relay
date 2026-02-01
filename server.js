@@ -123,6 +123,7 @@ wss.on('connection', (ws) => {
 
     if (event === 'media') {
       const { payload } = data.media;
+      if (!audioChunks.has(ws)) audioChunks.set(ws, []);
       audioChunks.get(ws).push(Buffer.from(payload, 'base64'));
 
       // Simple threshold: after ~3 seconds, process
