@@ -26,6 +26,11 @@ const {
   OPENAI_CHAT_MODEL = 'gpt-4o-mini'
 } = process.env;
 
+// Defensive trim to avoid hidden whitespace/newlines in env vars
+const OPENAI_API_KEY_CLEAN = (OPENAI_API_KEY || '').trim();
+const ELEVENLABS_API_KEY_CLEAN = (ELEVENLABS_API_KEY || '').trim();
+const ELEVENLABS_VOICE_ID_CLEAN = (ELEVENLABS_VOICE_ID || '').trim();
+
 const whitelist = new Set(
   CALLER_WHITELIST.split(',').map(s => s.trim()).filter(Boolean)
 );
@@ -142,7 +147,7 @@ async function whisperSTT(wavPath) {
 
   const resp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+    headers: { Authorization: `Bearer ${OPENAI_API_KEY_CLEAN}` },
     body: form
   });
 
@@ -157,7 +162,7 @@ async function chatReply(text) {
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      Authorization: `Bearer ${OPENAI_API_KEY_CLEAN}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
@@ -176,10 +181,10 @@ async function chatReply(text) {
 }
 
 async function elevenTTS(text, outPath) {
-  const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
+  const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID_CLEAN}`, {
     method: 'POST',
     headers: {
-      'xi-api-key': ELEVENLABS_API_KEY,
+      'xi-api-key': ELEVENLABS_API_KEY_CLEAN,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
