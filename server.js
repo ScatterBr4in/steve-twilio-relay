@@ -79,6 +79,7 @@ const wss = new WebSocketServer({ server, path: '/twilio/stream' });
 
 // Simple turn-based buffer (MVP)
 const audioChunks = new Map();
+const streamIds = new Map();
 
 wss.on('connection', (ws) => {
   ws.on('message', async (msg) => {
@@ -86,7 +87,9 @@ wss.on('connection', (ws) => {
     const { event } = data;
 
     if (event === 'start') {
-      console.log('[start] stream opened');
+      const streamSid = data?.start?.streamSid;
+      if (streamSid) streamIds.set(ws, streamSid);
+      console.log('[start] stream opened', streamSid || 'no-streamSid');
       // Send greeting TTS
       const greeting = "Hey, this is Steve.";
       const stamp = Date.now();
@@ -100,6 +103,7 @@ wss.on('connection', (ws) => {
         const mulawAudio = fs.readFileSync(mulawPath).toString('base64');
         ws.send(JSON.stringify({
           event: 'media',
+          streamSid,
           media: { payload: mulawAudio }
         }));
         console.log('[greeting] sent');
@@ -113,6 +117,7 @@ wss.on('connection', (ws) => {
           const toneAudio = fs.readFileSync(toneMulaw).toString('base64');
           ws.send(JSON.stringify({
             event: 'media',
+            streamSid,
             media: { payload: toneAudio }
           }));
           console.log('[greeting] fallback tone sent');
@@ -181,6 +186,7 @@ wss.on('connection', (ws) => {
 
     if (event === 'stop') {
       audioChunks.delete(ws);
+      streamIds.delete(ws);
     }
   });
 });
