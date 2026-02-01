@@ -20,11 +20,14 @@ const PORT = process.env.PORT || 3000;
 const {
   TWILIO_AUTH_TOKEN,
   CALLER_WHITELIST = '',
-  OPENAI_API_KEY,
+  OPENAI_API_KEY, // legacy
+  OPENAI_STT_API_KEY,
+  OPENAI_CHAT_API_KEY,
   ELEVENLABS_API_KEY,
   ELEVENLABS_VOICE_ID,
   OPENAI_CHAT_MODEL = 'gpt-4o',
-  OPENAI_BASE_URL = 'https://api.openai.com/v1'
+  OPENAI_CHAT_BASE_URL = 'https://api.openai.com/v1',
+  OPENAI_STT_BASE_URL = 'https://api.openai.com/v1'
 } = process.env;
 
 // Defensive trim to avoid hidden whitespace/newlines in env vars
@@ -37,6 +40,8 @@ const cleanVar = (val, prefix) => {
 };
 
 const OPENAI_API_KEY_CLEAN = cleanVar(OPENAI_API_KEY, 'OPENAI_API_KEY');
+const OPENAI_STT_API_KEY_CLEAN = cleanVar(OPENAI_STT_API_KEY, 'OPENAI_STT_API_KEY') || OPENAI_API_KEY_CLEAN;
+const OPENAI_CHAT_API_KEY_CLEAN = cleanVar(OPENAI_CHAT_API_KEY, 'OPENAI_CHAT_API_KEY') || OPENAI_API_KEY_CLEAN;
 const ELEVENLABS_API_KEY_CLEAN = cleanVar(ELEVENLABS_API_KEY, 'ELEVENLABS_API_KEY');
 const ELEVENLABS_VOICE_ID_CLEAN = cleanVar(ELEVENLABS_VOICE_ID, 'ELEVENLABS_VOICE_ID');
 
@@ -247,9 +252,10 @@ async function whisperSTT(wavPath) {
   form.append('file', fs.createReadStream(wavPath));
   form.append('model', 'whisper-1');
 
-  const resp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+  const sttUrl = `${OPENAI_STT_BASE_URL}/audio/transcriptions`.replace(/([^:]\/)\/+/g, "$1");
+  const resp = await fetch(sttUrl, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${OPENAI_API_KEY_CLEAN}` },
+    headers: { Authorization: `Bearer ${OPENAI_STT_API_KEY_CLEAN}` },
     body: form
   });
 
@@ -264,12 +270,12 @@ async function chatReply(text, history) {
   // Add user message to history
   history.push({ role: 'user', content: text });
 
-  const url = `${OPENAI_BASE_URL}/chat/completions`.replace(/([^:]\/)\/+/g, "$1"); // Normalize slash
+  const url = `${OPENAI_CHAT_BASE_URL}/chat/completions`.replace(/([^:]\/)\/+/g, "$1"); // Normalize slash
   
   const resp = await fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY_CLEAN}`,
+      Authorization: `Bearer ${OPENAI_CHAT_API_KEY_CLEAN}`,
       'Content-Type': 'application/json',
       'Bypass-Tunnel-Reminder': 'true',
       'x-openclaw-agent-id': 'main' // Hint for OpenClaw gateway
