@@ -27,9 +27,17 @@ const {
 } = process.env;
 
 // Defensive trim to avoid hidden whitespace/newlines in env vars
-const OPENAI_API_KEY_CLEAN = (OPENAI_API_KEY || '').trim();
-const ELEVENLABS_API_KEY_CLEAN = (ELEVENLABS_API_KEY || '').trim();
-const ELEVENLABS_VOICE_ID_CLEAN = (ELEVENLABS_VOICE_ID || '').trim();
+const cleanVar = (val, prefix) => {
+  const v = (val || '').trim();
+  if (prefix && v.startsWith(prefix + '=')) {
+    return v.slice(prefix.length + 1).trim(); // Remove KEY= if pasted
+  }
+  return v;
+};
+
+const OPENAI_API_KEY_CLEAN = cleanVar(OPENAI_API_KEY, 'OPENAI_API_KEY');
+const ELEVENLABS_API_KEY_CLEAN = cleanVar(ELEVENLABS_API_KEY, 'ELEVENLABS_API_KEY');
+const ELEVENLABS_VOICE_ID_CLEAN = cleanVar(ELEVENLABS_VOICE_ID, 'ELEVENLABS_VOICE_ID');
 
 const whitelist = new Set(
   CALLER_WHITELIST.split(',').map(s => s.trim()).filter(Boolean)
@@ -54,7 +62,6 @@ app.post('/twilio/voice', (req, res) => {
 
   res.type('text/xml').send(`
     <Response>
-      <Say>Hey, this is Steve.</Say>
       <Connect>
         <Stream url="${wsUrl}"></Stream>
       </Connect>
@@ -79,6 +86,19 @@ wss.on('connection', (ws) => {
     const { event } = data;
 
     if (event === 'start') {
+      // Send greeting TTS
+      const greeting = "Hey, this is Steve.";
+      const mp3Path = `/tmp/greet_${Date.now()}.mp3`;
+      await elevenTTS(greeting, mp3Path);
+      const mulawPath = `/tmp/greet_${Date.now()}.mulaw`;
+      execSync(`ffmpeg -i ${mp3Path} -ar 8000 -ac 1 -f mulaw ${mulawPath}`);
+      const mulawAudio = fs.readFileSync(mulawPath).toString('base64');
+      ws.send(JSON.stringify({
+        event: 'media',
+        media: { payload: mulawAudio }
+      }));
+      // Cleanup
+      [mp3Path, mulawPath].forEach(p => { try { fs.unlinkSync(p); } catch {} });
       audioChunks.set(ws, []);
       return;
     }
