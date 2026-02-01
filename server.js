@@ -23,7 +23,8 @@ const {
   OPENAI_API_KEY,
   ELEVENLABS_API_KEY,
   ELEVENLABS_VOICE_ID,
-  OPENAI_CHAT_MODEL = 'gpt-4o'
+  OPENAI_CHAT_MODEL = 'gpt-4o',
+  OPENAI_BASE_URL = 'https://api.openai.com/v1'
 } = process.env;
 
 // Defensive trim to avoid hidden whitespace/newlines in env vars
@@ -263,14 +264,18 @@ async function chatReply(text, history) {
   // Add user message to history
   history.push({ role: 'user', content: text });
 
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+  const url = `${OPENAI_BASE_URL}/chat/completions`.replace(/([^:]\/)\/+/g, "$1"); // Normalize slash
+  
+  const resp = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${OPENAI_API_KEY_CLEAN}`,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Bypass-Tunnel-Reminder': 'true',
+      'x-openclaw-agent-id': 'main' // Hint for OpenClaw gateway
     },
     body: JSON.stringify({
-      model: OPENAI_CHAT_MODEL, // Defaults to gpt-4o-mini
+      model: OPENAI_CHAT_MODEL, // Defaults to gpt-4o or openclaw:main
       messages: history
     })
   });
