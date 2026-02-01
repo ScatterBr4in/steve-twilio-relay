@@ -88,17 +88,35 @@ wss.on('connection', (ws) => {
     if (event === 'start') {
       // Send greeting TTS
       const greeting = "Hey, this is Steve.";
-      const mp3Path = `/tmp/greet_${Date.now()}.mp3`;
-      await elevenTTS(greeting, mp3Path);
-      const mulawPath = `/tmp/greet_${Date.now()}.mulaw`;
-      execSync(`ffmpeg -i ${mp3Path} -ar 8000 -ac 1 -f mulaw ${mulawPath}`);
-      const mulawAudio = fs.readFileSync(mulawPath).toString('base64');
-      ws.send(JSON.stringify({
-        event: 'media',
-        media: { payload: mulawAudio }
-      }));
-      // Cleanup
-      [mp3Path, mulawPath].forEach(p => { try { fs.unlinkSync(p); } catch {} });
+      const stamp = Date.now();
+      const mp3Path = `/tmp/greet_${stamp}.mp3`;
+      const mulawPath = `/tmp/greet_${stamp}.mulaw`;
+      try {
+        await elevenTTS(greeting, mp3Path);
+        execSync(`ffmpeg -i ${mp3Path} -ar 8000 -ac 1 -f mulaw ${mulawPath}`);
+        const mulawAudio = fs.readFileSync(mulawPath).toString('base64');
+        ws.send(JSON.stringify({
+          event: 'media',
+          media: { payload: mulawAudio }
+        }));
+      } catch (err) {
+        console.error('Greeting TTS failed (ElevenLabs). Sending fallback tone.');
+        try {
+          const toneWav = `/tmp/fallback_${stamp}.wav`;
+          const toneMulaw = `/tmp/fallback_${stamp}.mulaw`;
+          execSync(`ffmpeg -f lavfi -i "sine=frequency=1000:duration=0.2" -ar 8000 -ac 1 ${toneWav}`);
+          execSync(`ffmpeg -i ${toneWav} -ar 8000 -ac 1 -f mulaw ${toneMulaw}`);
+          const toneAudio = fs.readFileSync(toneMulaw).toString('base64');
+          ws.send(JSON.stringify({
+            event: 'media',
+            media: { payload: toneAudio }
+          }));
+          [toneWav, toneMulaw].forEach(p => { try { fs.unlinkSync(p); } catch {} });
+        } catch {}
+      } finally {
+        // Cleanup
+        [mp3Path, mulawPath].forEach(p => { try { fs.unlinkSync(p); } catch {} });
+      }
       audioChunks.set(ws, []);
       return;
     }
