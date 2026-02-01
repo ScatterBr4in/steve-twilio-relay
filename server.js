@@ -80,6 +80,7 @@ const wss = new WebSocketServer({ server, path: '/twilio/stream' });
 // Simple turn-based buffer (MVP)
 const audioChunks = new Map();
 const streamIds = new Map();
+const speakingUntil = new Map();
 
 wss.on('connection', (ws) => {
   ws.on('message', async (msg) => {
@@ -106,6 +107,7 @@ wss.on('connection', (ws) => {
           streamSid,
           media: { payload: mulawAudio }
         }));
+        speakingUntil.set(ws, Date.now() + 2500);
         console.log('[greeting] sent');
       } catch (err) {
         console.error('[greeting] TTS failed (ElevenLabs). Sending fallback tone.', err);
@@ -134,6 +136,11 @@ wss.on('connection', (ws) => {
     }
 
     if (event === 'media') {
+      // Ignore input if we are currently speaking (or just finished)
+      if (speakingUntil.has(ws) && Date.now() < speakingUntil.get(ws)) {
+        return;
+      }
+
       const { payload } = data.media;
       if (!audioChunks.has(ws)) audioChunks.set(ws, []);
       audioChunks.get(ws).push(Buffer.from(payload, 'base64'));
@@ -174,6 +181,11 @@ wss.on('connection', (ws) => {
             streamSid,
             media: { payload: mulawAudio }
           }));
+          
+          // Approx duration calculation: 8000 samples/sec, 1 byte/sample (mulaw)
+          // Add 1s buffer for network latency/playback
+          const durationMs = (Buffer.from(mulawAudio, 'base64').length / 8) + 1000;
+          speakingUntil.set(ws, Date.now() + durationMs);
 
           // cleanup
           [wavPath, wavPath.replace('.wav','.raw'), mp3Path, mulawPath].forEach(p => {
@@ -189,6 +201,7 @@ wss.on('connection', (ws) => {
     if (event === 'stop') {
       audioChunks.delete(ws);
       streamIds.delete(ws);
+      speakingUntil.delete(ws);
     }
   });
 });
