@@ -11,6 +11,10 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+app.get('/health', (req, res) => {
+  res.status(200).send('ok');
+});
+
 const PORT = process.env.PORT || 3000;
 
 const {
@@ -143,6 +147,9 @@ async function whisperSTT(wavPath) {
   });
 
   const json = await resp.json();
+  if (!resp.ok) {
+    console.error('Whisper error:', json);
+  }
   return json.text || '';
 }
 
@@ -162,6 +169,9 @@ async function chatReply(text) {
     })
   });
   const json = await resp.json();
+  if (!resp.ok) {
+    console.error('Chat error:', json);
+  }
   return json.choices?.[0]?.message?.content || 'Sorry, I missed that.';
 }
 
@@ -177,6 +187,11 @@ async function elevenTTS(text, outPath) {
       model_id: 'eleven_turbo_v2'
     })
   });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    console.error('ElevenLabs error:', errText);
+    return;
+  }
   const buffer = Buffer.from(await resp.arrayBuffer());
   fs.writeFileSync(outPath, buffer);
 }
