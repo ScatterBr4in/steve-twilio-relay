@@ -54,7 +54,7 @@ app.post('/twilio/voice', (req, res) => {
 
   res.type('text/xml').send(`
     <Response>
-      <Say>Connecting to Steve.</Say>
+      <Say>Hey, this is Steve.</Say>
       <Connect>
         <Stream url="${wsUrl}"></Stream>
       </Connect>
