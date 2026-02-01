@@ -136,9 +136,12 @@ wss.on('connection', (ws) => {
     }
 
     if (event === 'media') {
-      // Ignore input if we are currently speaking (or just finished)
-      if (speakingUntil.has(ws) && Date.now() < speakingUntil.get(ws)) {
-        return;
+      // Ignore input if we are currently speaking (infinity) or in cooldown
+      if (speakingUntil.has(ws)) {
+        const until = speakingUntil.get(ws);
+        if (until === Infinity || Date.now() < until) {
+          return;
+        }
       }
 
       const { payload } = data.media;
@@ -181,11 +184,12 @@ wss.on('connection', (ws) => {
             streamSid,
             media: { payload: mulawAudio }
           }));
-          
-          // Approx duration calculation: 8000 samples/sec, 1 byte/sample (mulaw)
-          // Add 1s buffer for network latency/playback
-          const durationMs = (Buffer.from(mulawAudio, 'base64').length / 8) + 1000;
-          speakingUntil.set(ws, Date.now() + durationMs);
+          ws.send(JSON.stringify({
+            event: 'mark',
+            streamSid,
+            mark: { name: 'reply_complete' }
+          }));
+          speakingUntil.set(ws, Infinity); // Block until mark received
 
           // cleanup
           [wavPath, wavPath.replace('.wav','.raw'), mp3Path, mulawPath].forEach(p => {
@@ -196,6 +200,12 @@ wss.on('connection', (ws) => {
           console.error(err);
         }
       }
+    }
+
+    if (event === 'mark') {
+      // Twilio finished playing audio. Add 2s cooldown for room echo/latency.
+      speakingUntil.set(ws, Date.now() + 2000);
+      console.log('[mark] playback finished, cooldown set');
     }
 
     if (event === 'stop') {
