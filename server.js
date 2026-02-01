@@ -167,9 +167,11 @@ wss.on('connection', (ws) => {
           execSync(`ffmpeg -i ${mp3Path} -ar 8000 -ac 1 -f mulaw ${mulawPath}`);
 
           const mulawAudio = fs.readFileSync(mulawPath).toString('base64');
+          const streamSid = streamIds.get(ws);
 
           ws.send(JSON.stringify({
             event: 'media',
+            streamSid,
             media: { payload: mulawAudio }
           }));
 
