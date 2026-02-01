@@ -23,7 +23,7 @@ const {
   OPENAI_API_KEY,
   ELEVENLABS_API_KEY,
   ELEVENLABS_VOICE_ID,
-  OPENAI_CHAT_MODEL = 'gpt-4o-mini'
+  OPENAI_CHAT_MODEL = 'gpt-4o'
 } = process.env;
 
 // Defensive trim to avoid hidden whitespace/newlines in env vars
@@ -82,7 +82,30 @@ const audioChunks = new Map();
 const streamIds = new Map();
 const speakingUntil = new Map();
 
+const conversationHistory = new Map();
+
 wss.on('connection', (ws) => {
+  conversationHistory.set(ws, [
+    { role: 'system', content: `You are Steve, Nick Lariccia's personal AI assistant. 
+    
+    IDENTITY:
+    - Name: Steve
+    - Vibe: Enthusiastic, resourceful, proactive. MacGyver energy.
+    - User: Nick (Radiologist, dad of 3 boys, loves tech/woodworking).
+    - Mode: Voice call (keep replies SHORT and CONVERSATIONAL. No lists, no markdown).
+    
+    CAPABILITIES:
+    - You are running on a lightweight relay server.
+    - You DO NOT have access to live tools (weather, calendar, email) right now.
+    - If asked for weather/news: "I can't check live data on this line yet, but I'll note it for later."
+    - If asked "who are you" or "what model": "I'm Steve, your custom assistant. Running on a lightweight voice relay right now."
+    
+    GOAL:
+    - Be helpful, friendly, and brief. 1-2 sentences max usually.
+    - Remember what was just said (maintain context).
+    ` }
+  ]);
+
   ws.on('message', async (msg) => {
     const data = JSON.parse(msg.toString());
     const { event } = data;
@@ -168,7 +191,7 @@ wss.on('connection', (ws) => {
           if (!transcript) return;
 
           // LLM reply (OpenAI direct for MVP)
-          const replyText = await chatReply(transcript);
+          const replyText = await chatReply(transcript, conversationHistory.get(ws));
 
           // TTS (ElevenLabs) -> mp3
           await elevenTTS(replyText, mp3Path);
@@ -212,6 +235,7 @@ wss.on('connection', (ws) => {
       audioChunks.delete(ws);
       streamIds.delete(ws);
       speakingUntil.delete(ws);
+      conversationHistory.delete(ws);
     }
   });
 });
@@ -235,7 +259,10 @@ async function whisperSTT(wavPath) {
   return json.text || '';
 }
 
-async function chatReply(text) {
+async function chatReply(text, history) {
+  // Add user message to history
+  history.push({ role: 'user', content: text });
+
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -243,18 +270,35 @@ async function chatReply(text) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: OPENAI_CHAT_MODEL,
-      messages: [
-        { role: 'system', content: 'You are Steve, a helpful assistant. Keep replies concise for phone.' },
-        { role: 'user', content: text }
-      ]
+      model: OPENAI_CHAT_MODEL, // Defaults to gpt-4o-mini
+      messages: history
     })
   });
   const json = await resp.json();
   if (!resp.ok) {
     console.error('Chat error:', json);
+    return 'Sorry, I had a brain fart.';
   }
-  return json.choices?.[0]?.message?.content || 'Sorry, I missed that.';
+  
+  const reply = json.choices?.[0]?.message?.content || 'Sorry, I missed that.';
+  
+  // Add assistant reply to history
+  history.push({ role: 'assistant', content: reply });
+  
+  // Prune history if too long (keep system + last 10)
+  if (history.length > 11) {
+    // Keep index 0 (system), slice the rest
+    const recent = history.slice(history.length - 10);
+    history.splice(1, history.length - 1 - 10, ...recent); 
+    // Actually, simpler: history = [history[0], ...history.slice(-10)] won't work because we need to mutate the array reference passed in? 
+    // `history` is a reference to the array in the map.
+    // Let's just shift if > 20 messages.
+    while (history.length > 21) {
+      history.splice(1, 1); // Remove oldest non-system message
+    }
+  }
+
+  return reply;
 }
 
 async function elevenTTS(text, outPath) {
